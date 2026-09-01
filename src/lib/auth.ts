@@ -3,6 +3,14 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { API_URL } from "./api";
 import type { Permission, User } from "./types";
 
+/**
+ * Server-side base URL for reaching the API. In Docker/behind a reverse proxy
+ * the browser-facing API_URL (e.g. http://localhost) is not reachable from
+ * inside the web container, so we call the API directly over the internal
+ * network (e.g. http://api:4000). Falls back to API_URL for local dev.
+ */
+const INTERNAL_API_URL = process.env.INTERNAL_API_URL || API_URL;
+
 interface LoginResponse {
   accessToken: string;
   user: User;
@@ -21,7 +29,7 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials.password) return null;
 
-        const res = await fetch(`${API_URL}/api/auth/login`, {
+        const res = await fetch(`${INTERNAL_API_URL}/api/auth/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

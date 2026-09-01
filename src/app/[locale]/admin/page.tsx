@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
-import { KeyRound, Plus, ShieldCheck, Trash2, Users } from "lucide-react";
+import { Building2, KeyRound, Plus, ShieldCheck, Trash2, Users } from "lucide-react";
 import { api } from "@/lib/api";
-import type { CreateUserInput, Role, User } from "@/lib/types";
+import type { CreateUserInput, Role, UpdateSettingsInput, User } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/table";
 import { RolesPanel } from "./roles-panel";
 
-type Tab = "users" | "roles";
+type Tab = "users" | "roles" | "settings";
 
 export default function AdminPage() {
   const [tab, setTab] = useState<Tab>("users");
@@ -50,7 +50,7 @@ export default function AdminPage() {
       </div>
 
       <div className="flex gap-1 border-b">
-        {(["users", "roles"] as Tab[]).map((t) => (
+        {(["users", "roles", "settings"] as Tab[]).map((t) => (
           <button
             key={t}
             type="button"
@@ -67,7 +67,86 @@ export default function AdminPage() {
         ))}
       </div>
 
-      {tab === "users" ? <UsersPanel /> : <RolesPanel />}
+      {tab === "users" && <UsersPanel />}
+      {tab === "roles" && <RolesPanel />}
+      {tab === "settings" && <SettingsPanel />}
+    </div>
+  );
+}
+
+function SettingsPanel() {
+  const qc = useQueryClient();
+  const { data: settings, isLoading } = useQuery({
+    queryKey: ["settings"],
+    queryFn: api.getSettings,
+  });
+
+  const [form, setForm] = useState<UpdateSettingsInput>({
+    depotCode: "",
+    depotName: "",
+  });
+  // Seed the form once the saved settings load.
+  const [seeded, setSeeded] = useState(false);
+  if (settings && !seeded) {
+    setForm({
+      depotCode: settings.depotCode ?? "",
+      depotName: settings.depotName ?? "",
+    });
+    setSeeded(true);
+  }
+
+  const save = useMutation({
+    mutationFn: (input: UpdateSettingsInput) => api.updateSettings(input),
+    onSuccess: () => {
+      toast.success("Settings saved");
+      qc.invalidateQueries({ queryKey: ["settings"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Building2 className="size-5" /> Default depot
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Set the depot for this system. It pre-fills the depot code and name
+            on every new report&apos;s EOR, so you don&apos;t retype it each time
+            (still editable per report).
+          </p>
+          <div className="grid gap-4 sm:grid-cols-[160px_1fr]">
+            <div className="space-y-1.5">
+              <Label htmlFor="depot-code">Depot code</Label>
+              <Input
+                id="depot-code"
+                value={form.depotCode ?? ""}
+                placeholder="e.g. SKH"
+                disabled={isLoading}
+                onChange={(e) => setForm((f) => ({ ...f, depotCode: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="depot-name">Depot name</Label>
+              <Input
+                id="depot-name"
+                value={form.depotName ?? ""}
+                placeholder="e.g. Sokhna Depot"
+                disabled={isLoading}
+                onChange={(e) => setForm((f) => ({ ...f, depotName: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <Button onClick={() => save.mutate(form)} disabled={save.isPending || isLoading}>
+              {save.isPending ? "Saving…" : "Save settings"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

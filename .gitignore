@@ -8,7 +8,7 @@ out/
 # Production
 build/
 
-# Environment variables
+# Environment variable
 .env
 .env.local
 .env.development.local
@@ -42,3 +42,7 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+
+#docs
+docs

@@ -1,26 +1,27 @@
 import { getSession } from "next-auth/react";
 import type {
+  Agency,
+  AgencyInput,
+  AppSettings,
   Attachment,
   CodeItem,
-  CostBreakdown,
   CreateCodeInput,
-  CreatePartInput,
   CreateReportInput,
   CreateRepairRateInput,
-  CreateTariffInput,
   CreateRoleInput,
   CreateUserInput,
   DamageReport,
   EorBreakdown,
   Paginated,
-  Part,
   PermissionCatalog,
   Refs,
   RepairRate,
   Role,
+  SendReportEmailInput,
   ShippingLine,
-  Tariff,
+  ShippingLineInput,
   UpdateRoleInput,
+  UpdateSettingsInput,
   UpdateUserInput,
   User,
 } from "./types";
@@ -131,10 +132,15 @@ export const api = {
   deleteAttachment: (id: string) =>
     http<void>(`/attachments/${id}`, { method: "DELETE" }),
 
-  getReportCost: (id: string) => http<CostBreakdown>(`/reports/${id}/cost`),
-
   /** IICL Estimate of Repair breakdown (the authoritative EOR). */
   getReportEor: (id: string) => http<EorBreakdown>(`/reports/${id}/eor`),
+
+  /** Email the EIR or EOR PDF to the shipping line (or an override recipient). */
+  sendReportEmail: (id: string, input: SendReportEmailInput) =>
+    http<{ sent: boolean; to: string; cc: string | null; document: string }>(
+      `/reports/${id}/email`,
+      { method: "POST", body: JSON.stringify(input) },
+    ),
 
   // ---- IICL code catalogs ----
   listCodes: (kind: CodeKind) => http<CodeItem[]>(`/iicl/${kind}`),
@@ -172,47 +178,47 @@ export const api = {
   deleteRepairRate: (id: string) =>
     http<void>(`/iicl/repair-rates/${id}`, { method: "DELETE" }),
 
-  // ---- Tariffs (repair-cost rates) ----
-  listTariffs: () => http<Tariff[]>("/tariffs"),
-
-  createTariff: (input: CreateTariffInput) =>
-    http<Tariff>("/tariffs", { method: "POST", body: JSON.stringify(input) }),
-
-  updateTariff: (id: string, input: Partial<CreateTariffInput>) =>
-    http<Tariff>(`/tariffs/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(input),
-    }),
-
-  deleteTariff: (id: string) =>
-    http<void>(`/tariffs/${id}`, { method: "DELETE" }),
-
-  // ---- Parts catalog ----
-  listParts: () => http<Part[]>("/parts"),
-
-  createPart: (input: CreatePartInput) =>
-    http<Part>("/parts", { method: "POST", body: JSON.stringify(input) }),
-
-  updatePart: (id: string, input: Partial<CreatePartInput>) =>
-    http<Part>(`/parts/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(input),
-    }),
-
-  deletePart: (id: string) =>
-    http<void>(`/parts/${id}`, { method: "DELETE" }),
-
   // ---- Shipping lines ----
   listShippingLines: () => http<ShippingLine[]>("/shipping-lines"),
 
-  createShippingLine: (name: string) =>
+  createShippingLine: (input: ShippingLineInput) =>
     http<ShippingLine>("/shipping-lines", {
       method: "POST",
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(input),
+    }),
+
+  updateShippingLine: (id: string, input: Partial<ShippingLineInput>) =>
+    http<ShippingLine>(`/shipping-lines/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
     }),
 
   deleteShippingLine: (id: string) =>
     http<void>(`/shipping-lines/${id}`, { method: "DELETE" }),
+
+  // ---- Agencies ----
+  listAgencies: () => http<Agency[]>("/agencies"),
+
+  createAgency: (input: AgencyInput) =>
+    http<Agency>("/agencies", { method: "POST", body: JSON.stringify(input) }),
+
+  updateAgency: (id: string, input: Partial<AgencyInput>) =>
+    http<Agency>(`/agencies/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+
+  deleteAgency: (id: string) =>
+    http<void>(`/agencies/${id}`, { method: "DELETE" }),
+
+  // ---- Settings (system-wide default depot) ----
+  getSettings: () => http<AppSettings>("/settings"),
+
+  updateSettings: (input: UpdateSettingsInput) =>
+    http<AppSettings>("/settings", {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
 
   // ---- Users (admin-only) ----
   listUsers: () => http<User[]>("/users"),
@@ -250,7 +256,6 @@ export const api = {
   // These are opened via <a target="_blank">, so the JWT can't ride in a
   // header — it goes in the access_token query param (see JwtAuthGuard).
   reportPdfUrl: (id: string) => `${API_URL}/api/reports/${id}/pdf`,
-  reportCostPdfUrl: (id: string) => `${API_URL}/api/reports/${id}/cost/pdf`,
   reportEorPdfUrl: (id: string) => `${API_URL}/api/reports/${id}/eor/pdf`,
   reportEorExcelUrl: (id: string) => `${API_URL}/api/reports/${id}/eor.xlsx`,
   uploadUrl: (fileName: string) => `${API_URL}/uploads/${fileName}`,

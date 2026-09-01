@@ -5,8 +5,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 const RESOURCES: Resource[] = [
   "reports",
-  "tariffs",
-  "parts",
   "shipping-lines",
   "iicl",
   "users",
@@ -15,8 +13,6 @@ const ACTIONS: PermissionAction[] = ["view", "create", "edit", "delete"];
 
 const RESOURCE_LABELS: Record<Resource, string> = {
   reports: "Reports",
-  tariffs: "Tariffs",
-  parts: "Parts",
   "shipping-lines": "Shipping Lines",
   iicl: "IICL Catalogs",
   users: "Users & Admin",

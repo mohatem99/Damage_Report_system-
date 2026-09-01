@@ -1,29 +1,33 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
+import { useLocale, useTranslations } from "next-intl";
+import { Link, usePathname, useRouter } from "@/i18n/navigation";
+import { routing, LOCALE_LABELS, type AppLocale } from "@/i18n/routing";
 import { usePermissions } from "@/lib/use-permissions";
 import type { Permission } from "@/lib/types";
 import {
+  Building2,
   ClipboardList,
+  Globe,
+  Grid3x3,
   LogOut,
   Menu,
   Plus,
-  Receipt,
   Ship,
   ShieldCheck,
   Tags,
-  Wrench,
   X,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LogoMark } from "@/components/logo";
 
 type NavItem = {
   href: string;
-  label: string;
+  /** Translation key under the "nav" namespace. */
+  key: string;
   icon: LucideIcon;
   /** Permission required to see this item. */
   perm: Permission;
@@ -34,16 +38,16 @@ type NavItem = {
 const NAV: NavItem[] = [
   {
     href: "/reports",
-    label: "Reports",
+    key: "reports",
     icon: ClipboardList,
     perm: "reports:view",
     // Active on /reports and /reports/<id>, but not the dedicated "new" route.
     match: (p) => p === "/reports" || (p.startsWith("/reports/") && p !== "/reports/new"),
   },
-  { href: "/iicl", label: "IICL Catalogs", icon: Tags, perm: "iicl:view" },
-  { href: "/tariffs", label: "Tariffs", icon: Receipt, perm: "tariffs:view" },
-  { href: "/parts", label: "Parts", icon: Wrench, perm: "parts:view" },
-  { href: "/shipping-lines", label: "Shipping Lines", icon: Ship, perm: "shipping-lines:view" },
+  { href: "/iicl", key: "iicl", icon: Tags, perm: "iicl:view" },
+  { href: "/numbering", key: "numbering", icon: Grid3x3, perm: "reports:view" },
+  { href: "/agencies", key: "agencies", icon: Building2, perm: "shipping-lines:view" },
+  { href: "/shipping-lines", key: "shippingLines", icon: Ship, perm: "shipping-lines:view" },
 ];
 
 function isActive(item: NavItem, path: string) {
@@ -52,25 +56,63 @@ function isActive(item: NavItem, path: string) {
 }
 
 function Brand() {
+  const t = useTranslations("nav");
   return (
     <Link href="/reports" className="flex items-center gap-2.5">
-      <span className="grid size-9 shrink-0 place-items-center rounded-md bg-primary text-[11px] font-bold tracking-tight text-primary-foreground">
-        E2O
+      <span className="grid size-9 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
+        <LogoMark />
       </span>
       <span className="flex flex-col leading-tight">
-        <span className="text-sm font-semibold">Egypt to Outside</span>
-        <span className="text-xs text-muted-foreground">Damage Reports</span>
+        <span className="text-sm font-semibold">{t("brandName")}</span>
+        <span className="text-xs text-muted-foreground">{t("brandTagline")}</span>
       </span>
     </Link>
+  );
+}
+
+function LanguageSwitcher() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const active = useLocale();
+  const t = useTranslations("nav");
+
+  return (
+    <div className="mb-2 px-1">
+      <div className="mb-1 flex items-center gap-1.5 px-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        <Globe className="size-3.5" />
+        {t("language")}
+      </div>
+      <div className="flex gap-1 rounded-md bg-muted p-1">
+        {routing.locales.map((l) => (
+          <button
+            key={l}
+            type="button"
+            onClick={() => router.replace(pathname, { locale: l as AppLocale })}
+            aria-current={l === active ? "true" : undefined}
+            className={cn(
+              "flex-1 rounded px-2 py-1 text-xs font-medium transition-colors",
+              l === active
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {LOCALE_LABELS[l as AppLocale]}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
 function UserFooter() {
   const { data: session } = useSession();
   const user = session?.user;
+  const locale = useLocale();
+  const t = useTranslations("nav");
 
   return (
     <div className="mt-auto border-t p-3">
+      <LanguageSwitcher />
       {user && (
         <div className="mb-2 flex items-center gap-3 rounded-md px-2 py-1.5">
           <div className="grid size-8 shrink-0 place-items-center rounded-full bg-secondary text-xs font-semibold uppercase text-secondary-foreground">
@@ -79,18 +121,18 @@ function UserFooter() {
           <div className="min-w-0 leading-tight">
             <p className="truncate text-sm font-medium">{user.name}</p>
             <p className="truncate text-[11px] text-muted-foreground">
-              {user.roleName ?? "No role"}
+              {user.roleName ?? t("noRole")}
             </p>
           </div>
         </div>
       )}
       <button
         type="button"
-        onClick={() => signOut({ callbackUrl: "/login" })}
+        onClick={() => signOut({ callbackUrl: `/${locale}/login` })}
         className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
         <LogOut className="size-4 shrink-0" />
-        Sign out
+        {t("signOut")}
       </button>
     </div>
   );
@@ -99,6 +141,7 @@ function UserFooter() {
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { can, isAdmin } = usePermissions();
+  const t = useTranslations("nav");
   const newActive = pathname === "/reports/new";
   const visibleNav = NAV.filter((item) => can(item.perm));
 
@@ -114,12 +157,12 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
           )}
         >
           <Plus className="size-4" />
-          New Report
+          {t("newReport")}
         </Link>
       )}
 
       <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-        Menu
+        {t("menu")}
       </p>
 
       {visibleNav.map((item) => {
@@ -139,7 +182,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             )}
           >
             <Icon className={cn("size-4 shrink-0", active && "text-foreground")} />
-            {item.label}
+            {t(item.key)}
           </Link>
         );
       })}
@@ -157,7 +200,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
           )}
         >
           <ShieldCheck className={cn("size-4 shrink-0", pathname.startsWith("/admin") && "text-foreground")} />
-          Admin
+          {t("admin")}
         </Link>
       )}
 
@@ -169,8 +212,10 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const t = useTranslations("nav");
 
   // The login page renders full-screen, without the app navigation chrome.
+  // usePathname (from next-intl) is locale-free, so this matches /en/login too.
   if (pathname === "/login") return <>{children}</>;
 
   return (
@@ -187,7 +232,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background px-4 md:hidden">
         <button
           type="button"
-          aria-label="Open menu"
+          aria-label={t("openMenu")}
           onClick={() => setOpen(true)}
           className="grid size-9 place-items-center rounded-md hover:bg-muted"
         >
@@ -203,12 +248,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             className="absolute inset-0 bg-black/40"
             onClick={() => setOpen(false)}
           />
-          <aside className="absolute left-0 top-0 flex h-full w-64 flex-col border-r bg-background shadow-xl">
+          <aside className="absolute inset-y-0 start-0 flex h-full w-64 flex-col border-r bg-background shadow-xl">
             <div className="flex h-14 items-center justify-between border-b px-4">
               <Brand />
               <button
                 type="button"
-                aria-label="Close menu"
+                aria-label={t("closeMenu")}
                 onClick={() => setOpen(false)}
                 className="grid size-9 place-items-center rounded-md hover:bg-muted"
               >

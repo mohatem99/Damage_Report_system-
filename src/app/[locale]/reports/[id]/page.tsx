@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef } from "react";
-import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useRef, useState } from "react";
+import { useParams } from "next/navigation";
+import { Link, useRouter } from "@/i18n/navigation";
 import {
   useMutation,
   useQuery,
@@ -10,11 +10,17 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
-import { Download, Trash2, Upload } from "lucide-react";
+import { Download, Mail, Trash2, Upload } from "lucide-react";
 import { api } from "@/lib/api";
+import type { DamageReport } from "@/lib/types";
 import { usePermissions } from "@/lib/use-permissions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { CodeCombo } from "@/components/iicl/code-combo";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Modal } from "@/components/ui/dialog";
 import {
   Card,
   CardContent,
@@ -42,6 +48,7 @@ export default function ReportDetailPage() {
   const { data: session } = useSession();
   const token = session?.accessToken;
   const { can } = usePermissions();
+  const [emailDoc, setEmailDoc] = useState<"eir" | "eor" | null>(null);
 
   const { data: report, isLoading } = useQuery({
     queryKey: ["report", id],
@@ -83,6 +90,8 @@ export default function ReportDetailPage() {
     refs?.damageTypes.find((t) => t.value === v)?.label ?? v;
   const labelForCode = (c: string) =>
     refs?.locationCodes.find((l) => l.code === c)?.label ?? c;
+  const labelForComponent = (c: string) =>
+    refs?.componentCodes.find((k) => k.code === c)?.description ?? c;
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -92,7 +101,7 @@ export default function ReportDetailPage() {
             ← Back to reports
           </Link>
           <h1 className="text-2xl font-bold">
-            Report No. {report.reportNo}
+            Report No. {report.reportNoFormatted ?? report.reportNo}
           </h1>
         </div>
         <div className="flex gap-2">
@@ -110,6 +119,12 @@ export default function ReportDetailPage() {
             <a href={api.withToken(api.reportEorExcelUrl(report.id), token)} target="_blank" rel="noreferrer">
               <Download /> EOR Excel
             </a>
+          </Button>
+          <Button variant="outline" onClick={() => setEmailDoc("eir")}>
+            <Mail /> Email EIR
+          </Button>
+          <Button variant="outline" onClick={() => setEmailDoc("eor")}>
+            <Mail /> Email EOR
           </Button>
           {can("reports:delete") && (
             <Button
@@ -147,44 +162,39 @@ export default function ReportDetailPage() {
             {report.items.map((item) => (
               <li key={item.id} className="space-y-1 py-2.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge>{labelForType(item.damageType)}</Badge>
                   <Badge variant="outline">
                     {item.repairMode === "REPLACE" ? "Replace" : "Repair"}
                     {(item.quantity ?? 1) > 1 ? ` ×${item.quantity}` : ""}
                   </Badge>
-                  <span className="text-sm">
-                    <span className="font-mono font-semibold">{item.locationCode}</span> — {labelForCode(item.locationCode)}
-                  </span>
+                  {item.componentCode ? (
+                    <>
+                      <CodeCombo item={item} />
+                      <span className="text-sm text-muted-foreground">
+                        {labelForComponent(item.componentCode)}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      {item.damageType && <Badge>{labelForType(item.damageType)}</Badge>}
+                      {item.locationCode && (
+                        <span className="text-sm">
+                          <span className="font-mono font-semibold">{item.locationCode}</span> — {labelForCode(item.locationCode)}
+                        </span>
+                      )}
+                    </>
+                  )}
                   {item.note && <span className="text-sm text-muted-foreground">· {item.note}</span>}
                 </div>
-                {(item.componentCode || item.repairCode || item.responsibility) && (
+                {(item.panelPosition != null || item.responsibility) && (
                   <div className="flex flex-wrap gap-1.5 pl-1 text-xs text-muted-foreground">
-                    {item.componentCode && (
-                      <span className="font-mono">Comp {item.componentCode}</span>
-                    )}
-                    {item.iiclLocationCode && (
-                      <span className="font-mono">Loc {item.iiclLocationCode}</span>
-                    )}
-                    {item.iiclDamageCode && (
-                      <span className="font-mono">Dmg {item.iiclDamageCode}</span>
-                    )}
-                    {item.repairCode && (
-                      <span className="font-mono">Rep {item.repairCode}</span>
+                    {item.panelPosition != null && (
+                      <span className="font-mono">Panel #{item.panelPosition}</span>
                     )}
                     {item.responsibility && (
                       <span className="font-mono">
                         Prty {item.responsibility === "OWNER" ? "O" : "U"}
                       </span>
                     )}
-                  </div>
-                )}
-                {item.parts && item.parts.length > 0 && (
-                  <div className="flex flex-wrap gap-2 pl-1 text-xs text-muted-foreground">
-                    {item.parts.map((p) => (
-                      <span key={p.id ?? p.partId}>
-                        + {p.part?.name ?? "Part"} × {p.quantity}
-                      </span>
-                    ))}
                   </div>
                 )}
               </li>
@@ -332,7 +342,7 @@ export default function ReportDetailPage() {
                 <div key={att.id} className="group relative overflow-hidden rounded-md border">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={api.uploadUrl(att.fileName)}
+                    src={att.url ?? api.uploadUrl(att.fileName)}
                     alt={att.originalName}
                     className="aspect-square w-full object-cover"
                   />
@@ -361,7 +371,134 @@ export default function ReportDetailPage() {
           <Detail label="Shipper" value={report.shipperName || "-"} />
         </CardContent>
       </Card>
+
+      {emailDoc && (
+        <EmailReportDialog
+          report={report}
+          document={emailDoc}
+          onClose={() => setEmailDoc(null)}
+        />
+      )}
     </div>
+  );
+}
+
+const DOC_LABEL: Record<"eir" | "eor", string> = {
+  eir: "Damage Report (EIR)",
+  eor: "Estimate of Repair (EOR)",
+};
+
+function EmailReportDialog({
+  report,
+  document,
+  onClose,
+}: {
+  report: DamageReport;
+  document: "eir" | "eor";
+  onClose: () => void;
+}) {
+  const line = report.shippingLine;
+  const [to, setTo] = useState(line?.contactEmail ?? "");
+  const [cc, setCc] = useState(line?.emailCc ?? "");
+  const [subject, setSubject] = useState(
+    `${DOC_LABEL[document]} — Container ${report.containerNumber} (Report No. ${report.reportNoFormatted ?? report.reportNo})`,
+  );
+  const [message, setMessage] = useState(
+    line?.contactName ? `Dear ${line.contactName},\n\n` : "",
+  );
+
+  const send = useMutation({
+    mutationFn: () =>
+      api.sendReportEmail(report.id, {
+        document,
+        to: to.trim() || undefined,
+        cc: cc.trim() || undefined,
+        subject: subject.trim() || undefined,
+        message: message.trim() || undefined,
+      }),
+    onSuccess: (res) => {
+      toast.success(`Email sent to ${res.to}`);
+      onClose();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Email ${DOC_LABEL[document]}`}
+      className="max-w-lg"
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose} disabled={send.isPending}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              if (!to.trim()) return toast.error("Enter a recipient email");
+              send.mutate();
+            }}
+            disabled={send.isPending}
+          >
+            <Mail /> {send.isPending ? "Sending…" : "Send email"}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        {!line?.contactEmail && (
+          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
+            This report&apos;s shipping line has no contact email. Enter a
+            recipient below, or set one on the{" "}
+            <Link href="/shipping-lines" className="underline">
+              shipping line
+            </Link>
+            .
+          </p>
+        )}
+        <div className="space-y-1.5">
+          <Label htmlFor="email-to">To</Label>
+          <Input
+            id="email-to"
+            type="email"
+            value={to}
+            placeholder="recipient@carrier.com"
+            onChange={(e) => setTo(e.target.value)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="email-cc">CC (comma-separated)</Label>
+          <Input
+            id="email-cc"
+            value={cc}
+            placeholder="a@x.com, b@y.com"
+            onChange={(e) => setCc(e.target.value)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="email-subject">Subject</Label>
+          <Input
+            id="email-subject"
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="email-message">Message</Label>
+          <Textarea
+            id="email-message"
+            rows={4}
+            value={message}
+            placeholder="Optional note to include above the report details."
+            onChange={(e) => setMessage(e.target.value)}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          The {DOC_LABEL[document]} PDF is attached automatically.
+        </p>
+      </div>
+    </Modal>
   );
 }
 

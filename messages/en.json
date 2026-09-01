@@ -1,0 +1,82 @@
+{
+  "nav": {
+    "brandName": "ContainerCare",
+    "brandTagline": "Damage & Repair Estimates",
+    "menu": "Menu",
+    "newReport": "New Report",
+    "reports": "Reports",
+    "iicl": "IICL Catalogs",
+    "agencies": "Agencies",
+    "shippingLines": "Shipping Lines",
+    "numbering": "Numbering Guide",
+    "admin": "Admin",
+    "signOut": "Sign out",
+    "noRole": "No role",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu",
+    "language": "Language"
+  },
+  "common": {
+    "loading": "Loading…"
+  },
+  "login": {
+    "title": "ContainerCare",
+    "subtitle": "Sign in to the damage report system",
+    "email": "Email",
+    "password": "Password",
+    "signIn": "Sign in",
+    "signingIn": "Signing in…",
+    "invalidCredentials": "Invalid email or password"
+  },
+  "reports": {
+    "title": "Reports",
+    "newReport": "New Report",
+    "loading": "Loading…",
+    "containerType": {
+      "STANDARD": "Standard",
+      "HIGH_CUBE": "High Cube",
+      "REEFER": "Reefer",
+      "OPEN_TOP": "Open Top",
+      "TANK": "Tank",
+      "FLAT_RACK": "Flat Rack"
+    },
+    "table": {
+      "searchPlaceholder": "Search reports…",
+      "status": "Status",
+      "type": "Type",
+      "allStatuses": "All statuses",
+      "allTypes": "All types",
+      "empty": "Empty",
+      "laden": "Laden",
+      "columns": "Columns",
+      "toggleColumns": "Toggle columns",
+      "export": "Export",
+      "exportSelected": "Export {count} selected",
+      "exportRows": "Export {count} rows",
+      "excel": "Excel (.xlsx)",
+      "pdf": "PDF",
+      "noReports": "No reports found.",
+      "rowsSelected": "{selected} of {total} row(s) selected",
+      "rowsCount": "{count} report(s)",
+      "rowsPerPage": "Rows per page",
+      "previous": "Previous",
+      "next": "Next",
+      "selectAll": "Select all",
+      "selectRow": "Select row",
+      "exportSuccess": "Exported {count} report(s) to {kind}",
+      "exportFailed": "Export failed: {message}",
+      "col": {
+        "no": "No.",
+        "date": "Date",
+        "container": "Container",
+        "truckCompany": "Truck Company",
+        "truckNumber": "Truck No.",
+        "size": "Size",
+        "status": "Status",
+        "type": "Type",
+        "damages": "Damages",
+        "photos": "Photos"
+      }
+    }
+  }
+}

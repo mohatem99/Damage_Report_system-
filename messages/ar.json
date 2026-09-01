@@ -1,0 +1,82 @@
+{
+  "nav": {
+    "brandName": "ContainerCare",
+    "brandTagline": "تقارير الأضرار والإصلاح",
+    "menu": "القائمة",
+    "newReport": "تقرير جديد",
+    "reports": "التقارير",
+    "iicl": "فهارس IICL",
+    "agencies": "الوكالات",
+    "shippingLines": "خطوط الشحن",
+    "numbering": "دليل الترقيم",
+    "admin": "الإدارة",
+    "signOut": "تسجيل الخروج",
+    "noRole": "بدون دور",
+    "openMenu": "فتح القائمة",
+    "closeMenu": "إغلاق القائمة",
+    "language": "اللغة"
+  },
+  "common": {
+    "loading": "جارٍ التحميل…"
+  },
+  "login": {
+    "title": "ContainerCare",
+    "subtitle": "سجّل الدخول إلى نظام تقارير الأضرار",
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور",
+    "signIn": "تسجيل الدخول",
+    "signingIn": "جارٍ تسجيل الدخول…",
+    "invalidCredentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة"
+  },
+  "reports": {
+    "title": "التقارير",
+    "newReport": "تقرير جديد",
+    "loading": "جارٍ التحميل…",
+    "containerType": {
+      "STANDARD": "قياسية",
+      "HIGH_CUBE": "عالية (High Cube)",
+      "REEFER": "مبرّدة",
+      "OPEN_TOP": "مفتوحة السقف",
+      "TANK": "خزان",
+      "FLAT_RACK": "مسطحة"
+    },
+    "table": {
+      "searchPlaceholder": "ابحث في التقارير…",
+      "status": "الحالة",
+      "type": "النوع",
+      "allStatuses": "كل الحالات",
+      "allTypes": "كل الأنواع",
+      "empty": "فارغة",
+      "laden": "محمّلة",
+      "columns": "الأعمدة",
+      "toggleColumns": "إظهار/إخفاء الأعمدة",
+      "export": "تصدير",
+      "exportSelected": "تصدير {count} محدد",
+      "exportRows": "تصدير {count} صف",
+      "excel": "Excel (.xlsx)",
+      "pdf": "PDF",
+      "noReports": "لا توجد تقارير.",
+      "rowsSelected": "{selected} من {total} صف محدد",
+      "rowsCount": "{count} تقرير",
+      "rowsPerPage": "صفوف لكل صفحة",
+      "previous": "السابق",
+      "next": "التالي",
+      "selectAll": "تحديد الكل",
+      "selectRow": "تحديد الصف",
+      "exportSuccess": "تم تصدير {count} تقرير إلى {kind}",
+      "exportFailed": "فشل التصدير: {message}",
+      "col": {
+        "no": "رقم",
+        "date": "التاريخ",
+        "container": "الحاوية",
+        "truckCompany": "شركة الشاحنة",
+        "truckNumber": "رقم الشاحنة",
+        "size": "المقاس",
+        "status": "الحالة",
+        "type": "النوع",
+        "damages": "الأضرار",
+        "photos": "الصور"
+      }
+    }
+  }
+}

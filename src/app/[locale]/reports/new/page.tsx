@@ -1,19 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useRouter } from "@/i18n/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Trash2, Upload } from "lucide-react";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { estimateEor } from "@/lib/pricing";
 import { formatDual } from "@/lib/money";
 import type {
   ContainerSize,
   CreateReportInput,
   DamageItem,
-  DamageItemPart,
   RepairMode,
   Responsibility,
 } from "@/lib/types";
@@ -35,7 +34,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { ContainerDiagram } from "@/components/container-diagram";
+import {
+  ComponentCodeSelect,
+  DamageCodeSelect,
+  RepairCodeSelect,
+  LocationCodeSelect,
+} from "@/components/iicl/code-selects";
+import { CodeCombo } from "@/components/iicl/code-combo";
 
 const NONE_LINE = "__none__";
 const NONE = "__none__";
@@ -43,27 +48,6 @@ const NONE = "__none__";
 const money = (currency: string, n: number) => formatDual(currency, n);
 const cur = (currency: string, n: number) =>
   `${n.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${currency}`;
-
-/** Prefill the IICL damage code from the selected EIR damage type. */
-const DAMAGE_TYPE_TO_IICL: Record<string, string> = {
-  BENT: "BE",
-  CAVED_IN: "CV",
-  DENT: "DT",
-  LOOSE: "LO",
-  CUT: "CU",
-  SCRATCHED: "SC",
-  PUSHED_IN: "PI",
-  BROKEN: "BR",
-  CRACKED: "CR",
-  DISTORTED: "DS",
-  MISSING: "MS",
-  HOLE: "HO",
-  SPRUNG: "SP",
-  PUSHED_OUT: "PO",
-  TORN_RIP: "TO",
-  PUNCTURE: "PU",
-  RUSTY: "RU",
-};
 
 const TYPE_LABELS: Record<string, string> = {
   STANDARD: "Standard",
@@ -74,18 +58,38 @@ const TYPE_LABELS: Record<string, string> = {
   FLAT_RACK: "Flat Rack",
 };
 
+/** ISO-style size/type suffix (e.g. "20DC", "40HC", "40RE") shown in Container Description. */
+const TYPE_CODE: Record<string, string> = {
+  STANDARD: "DC",
+  HIGH_CUBE: "HC",
+  REEFER: "RE",
+  OPEN_TOP: "OT",
+  TANK: "TK",
+  FLAT_RACK: "FR",
+};
+const sizeTypeCode = (size: string, type: string) =>
+  `${size}${TYPE_CODE[type] ?? type}`;
+
 const REPAIR_MODES: { value: RepairMode; label: string }[] = [
   { value: "REPAIR", label: "Repair" },
   { value: "REPLACE", label: "Replace" },
 ];
 
+/**
+ * Slice presets for components priced by area (e.g. a plywood floor sheet). Each
+ * fills the damage size to a fraction of the matched rate's full panel, so the
+ * EOR prices that fraction — e.g. a 240×116 sheet → ¾ = 180×116 = ¾ of the price.
+ */
+const SLICES: { label: string; f: number }[] = [
+  { label: "Full", f: 1 },
+  { label: "¾", f: 0.75 },
+  { label: "½", f: 0.5 },
+  { label: "¼", f: 0.25 },
+];
+
 export default function NewReportPage() {
   const router = useRouter();
   const { data: refs } = useQuery({ queryKey: ["refs"], queryFn: api.refs });
-  const { data: parts } = useQuery({
-    queryKey: ["parts"],
-    queryFn: api.listParts,
-  });
   const { data: repairRates } = useQuery({
     queryKey: ["repair-rates"],
     queryFn: api.listRepairRates,
@@ -94,6 +98,11 @@ export default function NewReportPage() {
     queryKey: ["shipping-lines"],
     queryFn: api.listShippingLines,
   });
+  const { data: settings } = useQuery({
+    queryKey: ["settings"],
+    queryFn: api.getSettings,
+  });
+  const depotSeeded = useRef(false);
 
   const [form, setForm] = useState({
     reportDate: new Date().toISOString().slice(0, 10),
@@ -109,34 +118,34 @@ export default function NewReportPage() {
     truckerName: "",
     truckCoName: "",
     shipperName: "",
-    // EOR header (optional)
-    eorNo: "",
-    eorDate: "",
-    estimateDate: "",
-    laborRate: "",
+    blNo: "",
+    // EOR header — trimmed to just what the backend requires; the rest
+    // (dates, weights, customer, notes, …) defaults to blank server-side.
+    // Depot is seeded from system settings below; labor rate/currency use
+    // silent defaults since there's no per-report UI for them anymore.
+    laborRate: "0",
     estCurrency: "EGP",
-    exchangeRate: "",
-    sizeType: "",
     depotCode: "",
     depotName: "",
-    opsCode: "",
-    blNo: "",
-    turnInDate: "",
-    onHireDate: "",
-    tareWeight: "",
-    grossWeight: "",
-    cscPlate: "",
-    yearBuild: "",
-    unitMeasure: "",
-    customer: "",
-    address: "",
-    criteria: "",
-    eorNote: "",
   });
 
+  // Pre-fill the depot from the system-wide default once, unless the user has
+  // already entered one. Reports still store their own depot, editable here.
+  useEffect(() => {
+    if (!settings || depotSeeded.current) return;
+    depotSeeded.current = true;
+    setForm((f) =>
+      f.depotCode || f.depotName
+        ? f
+        : {
+            ...f,
+            depotCode: settings.depotCode ?? "",
+            depotName: settings.depotName ?? "",
+          },
+    );
+  }, [settings]);
+
   const [items, setItems] = useState<DamageItem[]>([]);
-  const [pendingCode, setPendingCode] = useState<string>();
-  const [pendingType, setPendingType] = useState<string>();
   const [pendingMode, setPendingMode] = useState<RepairMode>("REPAIR");
   const [pendingQty, setPendingQty] = useState("1");
   const [pendingNote, setPendingNote] = useState("");
@@ -145,14 +154,11 @@ export default function NewReportPage() {
   const [pendingRepair, setPendingRepair] = useState<string>();
   const [pendingIiclDamage, setPendingIiclDamage] = useState<string>();
   const [pendingIiclLoc, setPendingIiclLoc] = useState<string>();
+  const [pendingPanel, setPendingPanel] = useState("");
   const [pendingResp, setPendingResp] = useState<string>(NONE);
   const [pendingGrade, setPendingGrade] = useState("");
   const [pendingLength, setPendingLength] = useState("");
   const [pendingWidth, setPendingWidth] = useState("");
-  // Parts staged for the damage item currently being built.
-  const [pendingParts, setPendingParts] = useState<DamageItemPart[]>([]);
-  const [partPick, setPartPick] = useState<string>();
-  const [partQty, setPartQty] = useState("1");
 
   // Photos are queued locally, then uploaded after the report is created.
   const [photos, setPhotos] = useState<File[]>([]);
@@ -166,11 +172,6 @@ export default function NewReportPage() {
     [previews],
   );
 
-  const markedCodes = useMemo(
-    () => Array.from(new Set(items.map((i) => i.locationCode))),
-    [items],
-  );
-
   // Live repair-cost estimate: reprices whenever the damage items, container
   // size, or shipping line change, so the inspector sees the total as they
   // build it.
@@ -179,42 +180,55 @@ export default function NewReportPage() {
       estimateEor(items, {
         containerSize: form.containerSize as ContainerSize,
         shippingLineId: form.shippingLineId || null,
+        // Agency of the selected line, so agency-level rates match in the estimate.
+        agencyId:
+          shippingLines?.find((l) => l.id === form.shippingLineId)?.agencyId ?? null,
         repairRates: repairRates ?? [],
         laborRate: Number(form.laborRate) || 0,
       }),
-    [items, form.containerSize, form.shippingLineId, form.laborRate, repairRates],
+    [
+      items,
+      form.containerSize,
+      form.shippingLineId,
+      form.laborRate,
+      repairRates,
+      shippingLines,
+    ],
   );
+
+  // The repair rate for the pending item that declares a full component size —
+  // powers the "slice" presets (e.g. plywood 240×116 → ¾ = 180×116).
+  const sliceRate = useMemo(() => {
+    if (!pendingComponent) return undefined;
+    const withFull = (repairRates ?? []).filter(
+      (r) => r.componentCode === pendingComponent && r.fullLengthMm && r.fullWidthMm,
+    );
+    return (
+      withFull.find((r) => !pendingRepair || r.repairCode === pendingRepair) ??
+      withFull[0]
+    );
+  }, [repairRates, pendingComponent, pendingRepair]);
+
+  // Guided panel numbering: the standard series count for the picked location
+  // face at the current container size (e.g. LXXX on a 40′ → 1–14). Used to hint
+  // the valid range and flag an out-of-range panel number.
+  const panelFace = useMemo(
+    () =>
+      pendingIiclLoc
+        ? refs?.faceCounts?.[form.containerSize as ContainerSize]?.find(
+            (f) => f.code === pendingIiclLoc,
+          )
+        : undefined,
+    [refs, form.containerSize, pendingIiclLoc],
+  );
+  const panelNum = pendingPanel ? Math.floor(Number(pendingPanel)) : null;
+  const panelOutOfRange =
+    !!panelFace && panelNum != null && (panelNum < 1 || panelNum > panelFace.max);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
-  const labelForType = (v: string) =>
-    refs?.damageTypes.find((t) => t.value === v)?.label ?? v;
-  const labelForCode = (c: string) =>
-    refs?.locationCodes.find((l) => l.code === c)?.label ?? c;
-  const partById = (id: string) => parts?.find((p) => p.id === id);
-
-  const addPendingPart = () => {
-    if (!partPick) return toast.error("Pick a part");
-    const qty = Math.max(1, Math.floor(Number(partQty) || 1));
-    setPendingParts((prev) => {
-      // Merge with an existing line for the same part.
-      const existing = prev.find((p) => p.partId === partPick);
-      if (existing) {
-        return prev.map((p) =>
-          p.partId === partPick ? { ...p, quantity: p.quantity + qty } : p,
-        );
-      }
-      return [...prev, { partId: partPick, quantity: qty }];
-    });
-    setPartPick(undefined);
-    setPartQty("1");
-  };
-
-  const selectType = (v: string) => {
-    setPendingType(v);
-    // Prefill the IICL damage code from the chosen EIR damage type.
-    if (DAMAGE_TYPE_TO_IICL[v]) setPendingIiclDamage(DAMAGE_TYPE_TO_IICL[v]);
-  };
+  const labelForComponent = (c: string) =>
+    refs?.componentCodes.find((k) => k.code === c)?.description ?? c;
 
   const num = (s: string) => {
     const n = Number(s);
@@ -222,23 +236,25 @@ export default function NewReportPage() {
   };
 
   const addItem = () => {
-    if (!pendingCode || !pendingType) {
-      toast.error("Pick a location and a damage type");
+    // A damage item is an IICL catalog line; the component code is the required
+    // subject (what's damaged).
+    if (!pendingComponent) {
+      toast.error("Pick an IICL component code");
       return;
     }
     setItems((prev) => [
       ...prev,
       {
-        damageType: pendingType,
-        locationCode: pendingCode,
         repairMode: pendingMode,
         quantity: Math.max(1, Math.floor(Number(pendingQty) || 1)),
         note: pendingNote || undefined,
-        parts: pendingParts,
-        componentCode: pendingComponent ?? null,
+        componentCode: pendingComponent,
         repairCode: pendingRepair ?? null,
         iiclDamageCode: pendingIiclDamage ?? null,
         iiclLocationCode: pendingIiclLoc ?? null,
+        panelPosition: pendingPanel
+          ? Math.max(1, Math.floor(Number(pendingPanel))) || null
+          : null,
         responsibility:
           pendingResp === NONE ? null : (pendingResp as Responsibility),
         grade: pendingGrade.trim() || null,
@@ -246,18 +262,14 @@ export default function NewReportPage() {
         widthMm: num(pendingWidth),
       },
     ]);
-    setPendingType(undefined);
     setPendingMode("REPAIR");
     setPendingQty("1");
     setPendingNote("");
-    setPendingCode(undefined);
-    setPendingParts([]);
-    setPartPick(undefined);
-    setPartQty("1");
     setPendingComponent(undefined);
     setPendingRepair(undefined);
     setPendingIiclDamage(undefined);
     setPendingIiclLoc(undefined);
+    setPendingPanel("");
     setPendingResp(NONE);
     setPendingGrade("");
     setPendingLength("");
@@ -279,7 +291,7 @@ export default function NewReportPage() {
       return { report, failed };
     },
     onSuccess: ({ report, failed }) => {
-      toast.success(`Report No. ${report.reportNo} created`);
+      toast.success(`Report No. ${report.reportNoFormatted ?? report.reportNo} created`);
       if (failed > 0) toast.error(`${failed} photo(s) failed to upload`);
       router.push(`/reports/${report.id}`);
     },
@@ -291,6 +303,10 @@ export default function NewReportPage() {
       toast.error("Container number is required");
       return;
     }
+    if (!form.blNo.trim()) {
+      toast.error("B/L No. is required");
+      return;
+    }
     if (items.length === 0) {
       toast.error("Add at least one damage item");
       return;
@@ -298,17 +314,11 @@ export default function NewReportPage() {
     const payload: Record<string, unknown> = {
       ...form,
       shippingLineId: form.shippingLineId || null,
+      // Derived from Size + Type (e.g. "20DC", "40HC") rather than hand-typed.
+      sizeType: sizeTypeCode(form.containerSize, form.containerType),
+      laborRate: Number(form.laborRate) || 0,
       items,
     };
-    // Optional date fields must be omitted (not "") to pass validation.
-    for (const k of ["eorDate", "estimateDate", "turnInDate", "onHireDate"]) {
-      if (!payload[k]) delete payload[k];
-    }
-    // Numeric EOR fields: convert or omit when blank.
-    for (const k of ["laborRate", "exchangeRate", "tareWeight", "grossWeight"]) {
-      if (payload[k] === "" || payload[k] == null) delete payload[k];
-      else payload[k] = Number(payload[k]);
-    }
     mutation.mutate(payload as unknown as CreateReportInput);
   };
 
@@ -335,6 +345,12 @@ export default function NewReportPage() {
               value={form.containerNumber}
               placeholder="e.g. MSKU1234567"
               onChange={(e) => set("containerNumber", e.target.value)}
+            />
+          </Field>
+          <Field label="B/L No. *">
+            <Input
+              value={form.blNo}
+              onChange={(e) => set("blNo", e.target.value)}
             />
           </Field>
           <Field label="Truck Company">
@@ -387,6 +403,13 @@ export default function NewReportPage() {
               </SelectContent>
             </Select>
           </Field>
+          <Field label="Size / Type">
+            <Input
+              value={sizeTypeCode(form.containerSize, form.containerType)}
+              disabled
+              className="font-mono font-medium"
+            />
+          </Field>
           <Field label="Shipping Line">
             <Select
               value={form.shippingLineId || NONE_LINE}
@@ -409,187 +432,151 @@ export default function NewReportPage() {
           <CardTitle>Damage Items</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
-          <ContainerDiagram
-            refs={refs}
-            selected={pendingCode}
-            marked={markedCodes}
-            onSelect={setPendingCode}
-          />
-
           <div className="space-y-3 rounded-md border p-4">
-            <div className="grid gap-3 sm:grid-cols-2 sm:items-end">
-              <Field label="Damage type">
-                <Select value={pendingType} onValueChange={selectType}>
-                  <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                  <SelectContent>
-                    {refs.damageTypes.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <div className="grid grid-cols-2 gap-3 sm:items-end">
-                <Field label="Action">
-                  <Select value={pendingMode} onValueChange={(v) => setPendingMode(v as RepairMode)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {REPAIR_MODES.map((m) => (
-                        <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="Qty">
-                  <Input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={pendingQty}
-                    onChange={(e) => setPendingQty(e.target.value)}
-                  />
-                </Field>
-              </div>
-            </div>
-            <Field label="Note / Description of repair (optional)">
-              <Input
-                value={pendingNote}
-                placeholder={pendingCode ? labelForCode(pendingCode) : "Pick a location on the diagram"}
-                onChange={(e) => setPendingNote(e.target.value)}
+            <p className="text-xs text-muted-foreground">
+              Each damage item is an IICL catalog line — pick the component
+              that&apos;s damaged, then its damage, repair and location codes.{" "}
+              <Link href="/numbering" className="underline">
+                Panel numbering guide
+              </Link>
+              .
+            </p>
+            <Field label="Component code *">
+              <ComponentCodeSelect
+                codes={refs.componentCodes}
+                value={pendingComponent}
+                onChange={setPendingComponent}
               />
             </Field>
 
-            {/* IICL repair coding — drives the Estimate of Repair (EOR) */}
-            <div className="space-y-3 rounded-md border border-dashed p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                IICL repair coding (for EOR)
-              </p>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Field label="Component code">
-                  <Select value={pendingComponent} onValueChange={setPendingComponent}>
-                    <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                    <SelectContent>
-                      {refs.componentCodes.map((c) => (
-                        <SelectItem key={c.code} value={c.code}>
-                          {c.code} — {c.description}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="Repair code">
-                  <Select value={pendingRepair} onValueChange={setPendingRepair}>
-                    <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                    <SelectContent>
-                      {refs.repairCodes.map((c) => (
-                        <SelectItem key={c.code} value={c.code}>
-                          {c.code} — {c.description}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="Damage code">
-                  <Select value={pendingIiclDamage} onValueChange={setPendingIiclDamage}>
-                    <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                    <SelectContent>
-                      {refs.damageCodes.map((c) => (
-                        <SelectItem key={c.code} value={c.code}>
-                          {c.code} — {c.description}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="Location code">
-                  <Select value={pendingIiclLoc} onValueChange={setPendingIiclLoc}>
-                    <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                    <SelectContent>
-                      {refs.iiclLocationCodes.map((c) => (
-                        <SelectItem key={c.code} value={c.code}>
-                          {c.code} — {c.description}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="Responsibility (Prty)">
-                  <Select value={pendingResp} onValueChange={setPendingResp}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE}>— Unassigned —</SelectItem>
-                      {refs.responsibilities.map((r) => (
-                        <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="Grade">
-                  <Input value={pendingGrade} placeholder="A / B / C" onChange={(e) => setPendingGrade(e.target.value)} />
-                </Field>
-                <Field label="Length">
-                  <Input type="number" min="0" step="0.01" value={pendingLength} onChange={(e) => setPendingLength(e.target.value)} />
-                </Field>
-                <Field label="Width">
-                  <Input type="number" min="0" step="0.01" value={pendingWidth} onChange={(e) => setPendingWidth(e.target.value)} />
-                </Field>
-              </div>
-            </div>
-
-            {/* Parts used for this damage (optional) */}
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
-              <Field label="Part (optional)">
-                <Select value={partPick} onValueChange={setPartPick}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={parts?.length ? "Select a part…" : "No parts in catalog"} />
-                  </SelectTrigger>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Field label="Damage code">
+                <DamageCodeSelect
+                  codes={refs.damageCodes}
+                  value={pendingIiclDamage}
+                  onChange={setPendingIiclDamage}
+                />
+              </Field>
+              <Field label="Repair code">
+                <RepairCodeSelect
+                  codes={refs.repairCodes}
+                  value={pendingRepair}
+                  onChange={setPendingRepair}
+                />
+              </Field>
+              <Field label="Location code">
+                <LocationCodeSelect
+                  codes={refs.iiclLocationCodes}
+                  value={pendingIiclLoc}
+                  onChange={setPendingIiclLoc}
+                />
+              </Field>
+              <Field label="Panel / board / member no.">
+                <Input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={pendingPanel}
+                  placeholder="e.g. 3"
+                  aria-invalid={panelOutOfRange || undefined}
+                  className={cn(panelOutOfRange && "border-destructive")}
+                  onChange={(e) => setPendingPanel(e.target.value)}
+                />
+                {panelFace && (
+                  <p
+                    className={cn(
+                      "text-[11px]",
+                      panelOutOfRange ? "text-destructive" : "text-muted-foreground",
+                    )}
+                  >
+                    {panelFace.label} · {form.containerSize}′ →{" "}
+                    {panelFace.max === 1 ? "1" : `1–${panelFace.max}`}
+                    {panelOutOfRange && " · out of range"}
+                  </p>
+                )}
+              </Field>
+              <Field label="Action">
+                <Select value={pendingMode} onValueChange={(v) => setPendingMode(v as RepairMode)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {parts?.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.name} — {formatDual(p.currency, p.unitPrice)}
-                      </SelectItem>
+                    {REPAIR_MODES.map((m) => (
+                      <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </Field>
               <Field label="Qty">
-                <Input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={partQty}
-                  onChange={(e) => setPartQty(e.target.value)}
-                  className="w-20"
-                />
+                <Input type="number" min="1" step="1" value={pendingQty} onChange={(e) => setPendingQty(e.target.value)} />
               </Field>
-              <Button type="button" variant="outline" onClick={addPendingPart}>
-                Add part
-              </Button>
+              <Field label="Responsibility (Prty)">
+                <Select value={pendingResp} onValueChange={setPendingResp}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE}>— Unassigned —</SelectItem>
+                    {refs.responsibilities.map((r) => (
+                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Grade">
+                <Input value={pendingGrade} placeholder="A / B / C" onChange={(e) => setPendingGrade(e.target.value)} />
+              </Field>
+              <Field label="Length">
+                <Input type="number" min="0" step="0.01" value={pendingLength} onChange={(e) => setPendingLength(e.target.value)} />
+              </Field>
+              <Field label="Width">
+                <Input type="number" min="0" step="0.01" value={pendingWidth} onChange={(e) => setPendingWidth(e.target.value)} />
+              </Field>
             </div>
 
-            {pendingParts.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {pendingParts.map((p) => {
-                  const cat = partById(p.partId);
-                  return (
-                    <Badge key={p.partId} variant="secondary" className="gap-1">
-                      {cat?.name ?? "Part"} × {p.quantity}
-                      <button
+            {sliceRate && (
+              <div className="space-y-1.5 rounded-md border border-dashed p-3">
+                <Label>
+                  Slice size — full panel {sliceRate.fullLengthMm}×{sliceRate.fullWidthMm}
+                  {sliceRate.grade ? ` · grade ${sliceRate.grade}` : ""}
+                </Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {SLICES.map((s) => {
+                    const len = Math.round((sliceRate.fullLengthMm ?? 0) * s.f);
+                    const wid = sliceRate.fullWidthMm ?? 0;
+                    const active =
+                      Number(pendingLength) === len && Number(pendingWidth) === wid;
+                    return (
+                      <Button
+                        key={s.label}
                         type="button"
-                        onClick={() =>
-                          setPendingParts((prev) =>
-                            prev.filter((x) => x.partId !== p.partId),
-                          )
-                        }
-                        className="ml-1 text-muted-foreground hover:text-destructive"
-                        title="Remove part"
+                        variant={active ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => {
+                          setPendingLength(String(len));
+                          setPendingWidth(String(wid));
+                          // Match the rate's grade so it actually prices.
+                          if (sliceRate.grade) setPendingGrade(sliceRate.grade);
+                        }}
                       >
-                        ×
-                      </button>
-                    </Badge>
-                  );
-                })}
+                        {s.label} · {len}×{wid}
+                      </Button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Prices as a fraction of the full panel ({sliceRate.materialCost}{" "}
+                  {sliceRate.currency}) — ½ ={" "}
+                  {Math.round(Number(sliceRate.materialCost) * 0.5)} {sliceRate.currency},
+                  ¾ = {Math.round(Number(sliceRate.materialCost) * 0.75)}{" "}
+                  {sliceRate.currency}.
+                </p>
               </div>
             )}
+
+            <Field label="Description of repair (optional)">
+              <Input
+                value={pendingNote}
+                placeholder={pendingComponent ? labelForComponent(pendingComponent) : "e.g. Renew plywood floor panel"}
+                onChange={(e) => setPendingNote(e.target.value)}
+              />
+            </Field>
 
             <div className="flex justify-end">
               <Button type="button" onClick={addItem}>Add damage item</Button>
@@ -602,28 +589,27 @@ export default function NewReportPage() {
                 <li key={idx} className="flex items-start justify-between gap-3 p-3">
                   <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge>{labelForType(item.damageType)}</Badge>
                       <Badge variant="outline">
                         {item.repairMode === "REPLACE" ? "Replace" : "Repair"}
                         {(item.quantity ?? 1) > 1 ? ` ×${item.quantity}` : ""}
                       </Badge>
-                      <span className="text-sm">
-                        <span className="font-mono font-semibold">{item.locationCode}</span>{" "}
-                        — {labelForCode(item.locationCode)}
-                      </span>
+                      <CodeCombo item={item} />
+                      {item.componentCode && (
+                        <span className="text-sm text-muted-foreground">
+                          {labelForComponent(item.componentCode)}
+                        </span>
+                      )}
+                      {item.panelPosition != null && (
+                        <Badge variant="outline" className="font-mono">
+                          {item.iiclLocationCode
+                            ? `${item.iiclLocationCode}-${item.panelPosition}`
+                            : `Panel #${item.panelPosition}`}
+                        </Badge>
+                      )}
                       {item.note && (
                         <span className="text-sm text-muted-foreground">· {item.note}</span>
                       )}
                     </div>
-                    {item.parts && item.parts.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 pl-1">
-                        {item.parts.map((p) => (
-                          <span key={p.partId} className="text-xs text-muted-foreground">
-                            + {partById(p.partId)?.name ?? "Part"} × {p.quantity}
-                          </span>
-                        ))}
-                      </div>
-                    )}
                   </div>
                   <Button
                     type="button"
@@ -717,40 +703,6 @@ export default function NewReportPage() {
           </CardContent>
         </Card>
       )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>EOR Details (optional)</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-3">
-          <Field label="EOR No."><Input value={form.eorNo} onChange={(e) => set("eorNo", e.target.value)} /></Field>
-          <Field label="EOR Date"><Input type="date" value={form.eorDate} onChange={(e) => set("eorDate", e.target.value)} /></Field>
-          <Field label="Estimate Date"><Input type="date" value={form.estimateDate} onChange={(e) => set("estimateDate", e.target.value)} /></Field>
-          <Field label="Labour Rate / h"><Input type="number" min="0" step="0.01" value={form.laborRate} onChange={(e) => set("laborRate", e.target.value)} /></Field>
-          <Field label="Est. Currency"><Input value={form.estCurrency} onChange={(e) => set("estCurrency", e.target.value.toUpperCase())} /></Field>
-          <Field label="Exchange Rate"><Input type="number" min="0" step="0.0001" value={form.exchangeRate} onChange={(e) => set("exchangeRate", e.target.value)} /></Field>
-          <Field label="Size / Type"><Input value={form.sizeType} placeholder="e.g. 20DC" onChange={(e) => set("sizeType", e.target.value)} /></Field>
-          <Field label="Depot Code"><Input value={form.depotCode} onChange={(e) => set("depotCode", e.target.value)} /></Field>
-          <Field label="Depot Name"><Input value={form.depotName} onChange={(e) => set("depotName", e.target.value)} /></Field>
-          <Field label="Ops Code"><Input value={form.opsCode} onChange={(e) => set("opsCode", e.target.value)} /></Field>
-          <Field label="B/L No."><Input value={form.blNo} onChange={(e) => set("blNo", e.target.value)} /></Field>
-          <Field label="Turn In Date"><Input type="date" value={form.turnInDate} onChange={(e) => set("turnInDate", e.target.value)} /></Field>
-          <Field label="On-Hire Date"><Input type="date" value={form.onHireDate} onChange={(e) => set("onHireDate", e.target.value)} /></Field>
-          <Field label="Tare Weight"><Input type="number" min="0" step="0.01" value={form.tareWeight} onChange={(e) => set("tareWeight", e.target.value)} /></Field>
-          <Field label="Gross Weight"><Input type="number" min="0" step="0.01" value={form.grossWeight} onChange={(e) => set("grossWeight", e.target.value)} /></Field>
-          <Field label="CSC Plate"><Input value={form.cscPlate} onChange={(e) => set("cscPlate", e.target.value)} /></Field>
-          <Field label="Year Build"><Input value={form.yearBuild} onChange={(e) => set("yearBuild", e.target.value)} /></Field>
-          <Field label="Unit Measure"><Input value={form.unitMeasure} onChange={(e) => set("unitMeasure", e.target.value)} /></Field>
-          <Field label="Criteria"><Input value={form.criteria} onChange={(e) => set("criteria", e.target.value)} /></Field>
-          <Field label="Customer"><Input value={form.customer} onChange={(e) => set("customer", e.target.value)} /></Field>
-          <div className="sm:col-span-3">
-            <Field label="Address"><Input value={form.address} onChange={(e) => set("address", e.target.value)} /></Field>
-          </div>
-          <div className="sm:col-span-3">
-            <Field label="EOR Note"><Input value={form.eorNote} onChange={(e) => set("eorNote", e.target.value)} /></Field>
-          </div>
-        </CardContent>
-      </Card>
 
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">

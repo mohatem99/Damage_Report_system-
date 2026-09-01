@@ -1,4 +1,4 @@
-import type { DamageReport } from "./types";
+import type { CodeItem, DamageReport } from "./types";
 
 // xlsx and jspdf are heavy; load them on demand (export click) so they stay
 // out of the initial /reports bundle.
@@ -14,7 +14,7 @@ const TYPE_LABELS: Record<string, string> = {
 
 /** Columns used for spreadsheet / PDF exports (label + value extractor). */
 const EXPORT_COLUMNS: { header: string; value: (r: DamageReport) => string | number }[] = [
-  { header: "Report No.", value: (r) => r.reportNo },
+  { header: "Report No.", value: (r) => r.reportNoFormatted ?? r.reportNo },
   { header: "Date", value: (r) => r.reportDate },
   { header: "Container Number", value: (r) => r.containerNumber },
   { header: "Truck Company", value: (r) => r.truckCompany || "" },
@@ -73,7 +73,7 @@ export async function exportReportsToPdf(
 
   doc.setFontSize(15);
   doc.setFont("helvetica", "bold");
-  doc.text("EGYPT TO OUTSIDE TRADING", 40, 40);
+  doc.text("CONTAINERCARE", 40, 40);
   doc.setFontSize(11);
   doc.setFont("helvetica", "normal");
   doc.text("Container Damage Reports", 40, 58);
@@ -98,6 +98,98 @@ export async function exportReportsToPdf(
       8: { halign: "center" },
       9: { halign: "center" },
     },
+  });
+
+  doc.save(fileName);
+}
+
+/** Columns for a code-catalog export: Code, Description, and Group when used. */
+function codeColumns(
+  withGroup: boolean,
+): { header: string; value: (c: CodeItem) => string }[] {
+  const cols: { header: string; value: (c: CodeItem) => string }[] = [
+    { header: "Code", value: (c) => c.code },
+    { header: "Description", value: (c) => c.description },
+  ];
+  if (withGroup) cols.push({ header: "Group", value: (c) => c.group ?? "" });
+  return cols;
+}
+
+/** Turn a catalog label ("Component Codes") into a filename slug. */
+function slug(label: string): string {
+  return label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+/** Export a code catalog to an .xlsx file and trigger a browser download. */
+export async function exportCodesToExcel(
+  codes: CodeItem[],
+  label: string,
+  withGroup: boolean,
+  fileName = `${slug(label)}-${timestamp()}.xlsx`,
+): Promise<void> {
+  const XLSX = await import("xlsx");
+  const columns = codeColumns(withGroup);
+  const header = columns.map((c) => c.header);
+  const rows = codes.map((c) => columns.map((col) => col.value(c)));
+
+  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  ws["!cols"] = columns.map((col) => ({
+    wch: Math.max(
+      col.header.length,
+      ...codes.map((c) => String(col.value(c)).length),
+      8,
+    ) + 2,
+  }));
+  ws["!autofilter"] = {
+    ref: XLSX.utils.encode_range({
+      s: { r: 0, c: 0 },
+      e: { r: codes.length, c: columns.length - 1 },
+    }),
+  };
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, label.slice(0, 31));
+  XLSX.writeFile(wb, fileName);
+}
+
+/** Export a code catalog to a PDF table and trigger a browser download. */
+export async function exportCodesToPdf(
+  codes: CodeItem[],
+  label: string,
+  withGroup: boolean,
+  fileName = `${slug(label)}-${timestamp()}.pdf`,
+): Promise<void> {
+  const [{ jsPDF }, autoTableMod] = await Promise.all([
+    import("jspdf"),
+    import("jspdf-autotable"),
+  ]);
+  const autoTable = autoTableMod.default;
+  const columns = codeColumns(withGroup);
+  const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+
+  doc.setFontSize(15);
+  doc.setFont("helvetica", "bold");
+  doc.text("CONTAINERCARE", 40, 40);
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "normal");
+  doc.text(label, 40, 58);
+  doc.setFontSize(9);
+  doc.setTextColor(120);
+  doc.text(
+    `Generated ${new Date().toLocaleString()}  ·  ${codes.length} code(s)`,
+    40,
+    73,
+  );
+  doc.setTextColor(0);
+
+  autoTable(doc, {
+    startY: 86,
+    head: [columns.map((c) => c.header)],
+    body: codes.map((c) => columns.map((col) => col.value(c))),
+    styles: { fontSize: 9, cellPadding: 4, overflow: "linebreak" },
+    headStyles: { fillColor: [31, 59, 87], textColor: 255, fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [245, 247, 250] },
+    columnStyles: { 0: { cellWidth: 90, fontStyle: "bold" } },
   });
 
   doc.save(fileName);

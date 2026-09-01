@@ -10,47 +10,69 @@ export type ContainerType =
   | "TANK"
   | "FLAT_RACK";
 
-export interface Part {
+export interface Agency {
   id: string;
   name: string;
-  unitPrice: number;
-  currency: string;
+  code?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface CreatePartInput {
+export interface AgencyInput {
   name: string;
-  unitPrice: number;
-  currency?: string;
+  code?: string | null;
 }
 
 export interface ShippingLine {
   id: string;
   name: string;
+  code?: string | null;
+  agencyId?: string | null;
+  agency?: Agency | null;
+  /** Email defaults used to pre-fill the "email this report" dialog. */
+  contactEmail?: string | null;
+  contactName?: string | null;
+  emailCc?: string | null;
+  address?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-/** A part attached to a damage item, as sent to / received from the API. */
-export interface DamageItemPart {
-  id?: string;
-  partId: string;
-  quantity: number;
-  /** Present on reads (eager-loaded catalog part); omitted on writes. */
-  part?: Part | null;
+export interface ShippingLineInput {
+  name: string;
+  code?: string | null;
+  agencyId?: string | null;
+  contactEmail?: string | null;
+  contactName?: string | null;
+  emailCc?: string | null;
+  address?: string | null;
+}
+
+/** Payload to email a report's EIR/EOR PDF. */
+export interface SendReportEmailInput {
+  document: "eir" | "eor";
+  to?: string;
+  cc?: string;
+  subject?: string;
+  message?: string;
 }
 
 export interface DamageItem {
   id?: string;
-  damageType: string;
-  locationCode: string;
+  /** Legacy EIR damage type; items are now coded via the IICL fields below. */
+  damageType?: string | null;
+  /** Legacy diagram A–Z code; the IICL location code is the location now. */
+  locationCode?: string | null;
   /** Repair in place (default) or replace the component. */
   repairMode?: RepairMode;
   /** Units of this repair; defaults to 1. */
   quantity?: number;
+  /**
+   * Numbered panel/board on the located face — e.g. left side, panel 3 (with
+   * iiclLocationCode = LXXX), or plywood floor board 5. Optional.
+   */
+  panelPosition?: number | null;
   note?: string;
-  parts?: DamageItemPart[];
   // ---- IICL repair coding (drives the EOR) ----
   componentCode?: string | null;
   iiclDamageCode?: string | null;
@@ -63,6 +85,18 @@ export interface DamageItem {
   hoursOverride?: number | null;
   laborCostOverride?: number | null;
   materialCostOverride?: number | null;
+}
+
+/** System-wide settings (single row). The default depot pre-fills each EOR. */
+export interface AppSettings {
+  depotCode?: string | null;
+  depotName?: string | null;
+  updatedAt?: string;
+}
+
+export interface UpdateSettingsInput {
+  depotCode?: string | null;
+  depotName?: string | null;
 }
 
 /** A code catalog row (component / damage / repair / location). */
@@ -91,6 +125,8 @@ export interface RepairRate {
   containerSize?: ContainerSize | null;
   shippingLineId?: string | null;
   shippingLine?: ShippingLine | null;
+  agencyId?: string | null;
+  agency?: Agency | null;
   laborHours: number;
   laborRate?: number | null;
   materialCost: number;
@@ -110,6 +146,7 @@ export interface CreateRepairRateInput {
   grade?: string | null;
   containerSize?: ContainerSize | null;
   shippingLineId?: string | null;
+  agencyId?: string | null;
   laborHours?: number;
   laborRate?: number | null;
   materialCost: number;
@@ -159,6 +196,8 @@ export interface EorBreakdown {
 export interface Attachment {
   id: string;
   fileName: string;
+  /** Public URL to load the image (S3 object URL or local /uploads URL). */
+  url?: string | null;
   originalName: string;
   mimeType: string;
   size: number;
@@ -168,6 +207,8 @@ export interface Attachment {
 export interface DamageReport {
   id: string;
   reportNo: number;
+  /** Display form of reportNo, e.g. "2026-0000215" — used in filenames/PDFs/UI. */
+  reportNoFormatted?: string;
   reportDate: string;
   containerNumber: string;
   truckCompany?: string;
@@ -190,6 +231,7 @@ export interface DamageReport {
   turnInDate?: string;
   onHireDate?: string;
   blNo?: string;
+  bookingNumber?: string;
   depotCode?: string;
   depotName?: string;
   opsCode?: string;
@@ -223,6 +265,7 @@ export interface EorHeaderInput {
   turnInDate?: string;
   onHireDate?: string;
   blNo?: string;
+  bookingNumber?: string;
   depotCode?: string;
   depotName?: string;
   opsCode?: string;
@@ -266,77 +309,9 @@ export interface Paginated<T> {
   pages: number;
 }
 
-export interface Tariff {
-  id: string;
-  damageType: string;
-  containerSize: ContainerSize | null;
-  shippingLineId?: string | null;
-  shippingLine?: ShippingLine | null;
-  /** Labour rate per man-hour. */
-  laborRate: number;
-  /** Standard man-hours to repair in place. */
-  repairHours: number;
-  /** Material allowance for a repair. */
-  repairMaterial: number;
-  /** Standard man-hours to fit a replacement. */
-  replaceHours: number;
-  /** Cost of the replacement component. */
-  replaceMaterial: number;
-  currency: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CreateTariffInput {
-  damageType: string;
-  containerSize?: ContainerSize | null;
-  shippingLineId?: string | null;
-  laborRate: number;
-  repairHours: number;
-  repairMaterial: number;
-  replaceHours: number;
-  replaceMaterial: number;
-  currency?: string;
-}
-
-export interface CostPartLine {
-  name: string;
-  quantity: number;
-  unitPrice: number;
-  amount: number;
-}
-
-export interface CostLine {
-  damageType: string;
-  locationCode: string;
-  mode: RepairMode;
-  quantity: number;
-  hours: number;
-  laborRate: number;
-  laborPriced: boolean;
-  labor: number;
-  material: number;
-  parts: CostPartLine[];
-  amount: number;
-}
-
-export interface CostBreakdown {
-  currency: string;
-  total: number;
-  laborTotal: number;
-  materialTotal: number;
-  partsTotal: number;
-  lines: CostLine[];
-  unpriced: { damageType: string; locationCode: string }[];
-  pricedCount: number;
-  unpricedCount: number;
-}
-
 /** A permission string, e.g. "reports:create". */
 export type Resource =
   | "reports"
-  | "tariffs"
-  | "parts"
   | "shipping-lines"
   | "iicl"
   | "users";
@@ -389,9 +364,22 @@ export interface CreateUserInput {
 
 export type UpdateUserInput = Partial<CreateUserInput>;
 
+/** Standard count of a numbered series (panels/boards/members) on a face. */
+export interface FaceCount {
+  /** IICL TB-002 location face the number qualifies (LXXX / RXXX / IXXX / UXXX). */
+  code: string;
+  label: string;
+  /** How many numbered panels/boards/members that face has. */
+  max: number;
+}
+
 export interface Refs {
   damageTypes: { value: string; label: string }[];
   locationCodes: { code: string; label: string }[];
+  /** Diagram A–Z location code → IICL TB-002 location code (e.g. "F" → "LXXX"). */
+  locationToIicl: Record<string, string>;
+  /** Standard numbered-series counts per container size and face. */
+  faceCounts: Record<ContainerSize, FaceCount[]>;
   containerSizes: ContainerSize[];
   containerStatuses: ContainerStatus[];
   containerTypes: ContainerType[];

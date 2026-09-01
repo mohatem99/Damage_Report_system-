@@ -3,7 +3,9 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
+import { useLocale, useTranslations } from "next-intl";
 import { LogIn } from "lucide-react";
+import { LogoMark } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,7 +19,10 @@ import {
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const callbackUrl = params.get("callbackUrl") || "/reports";
+  const locale = useLocale();
+  const t = useTranslations("login");
+  // callbackUrl from the middleware already carries the locale prefix.
+  const callbackUrl = params.get("callbackUrl") || `/${locale}/reports`;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,7 +40,7 @@ function LoginForm() {
     });
     setLoading(false);
     if (res?.error) {
-      setError("Invalid email or password");
+      setError(t("invalidCredentials"));
       return;
     }
     router.push(callbackUrl);
@@ -45,7 +50,7 @@ function LoginForm() {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="email">{t("email")}</Label>
         <Input
           id="email"
           type="email"
@@ -57,7 +62,7 @@ function LoginForm() {
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="password">Password</Label>
+        <Label htmlFor="password">{t("password")}</Label>
         <Input
           id="password"
           type="password"
@@ -71,25 +76,24 @@ function LoginForm() {
       {error && <p className="text-sm text-destructive">{error}</p>}
       <Button type="submit" className="w-full" disabled={loading}>
         <LogIn className="size-4" />
-        {loading ? "Signing in…" : "Sign in"}
+        {loading ? t("signingIn") : t("signIn")}
       </Button>
     </form>
   );
 }
 
 export default function LoginPage() {
+  const t = useTranslations("login");
   return (
     <div className="grid min-h-screen place-items-center bg-muted/30 px-4">
       <Card className="w-full max-w-sm shadow-lg">
         <CardHeader className="space-y-3 text-center">
-          <div className="mx-auto grid size-12 place-items-center rounded-lg bg-primary text-sm font-bold tracking-tight text-primary-foreground">
-            E2O
+          <div className="mx-auto grid size-12 place-items-center rounded-lg bg-primary text-primary-foreground">
+            <LogoMark />
           </div>
           <div>
-            <CardTitle className="text-xl">Egypt to Outside</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Sign in to the damage report system
-            </p>
+            <CardTitle className="text-xl">{t("title")}</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">{t("subtitle")}</p>
           </div>
         </CardHeader>
         <CardContent>

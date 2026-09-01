@@ -1,11 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, Trash2 } from "lucide-react";
+import {
+  Download,
+  FileSpreadsheet,
+  FileText,
+  Plus,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { api, type CodeKind } from "@/lib/api";
 import type { CodeItem } from "@/lib/types";
+import { exportCodesToExcel, exportCodesToPdf } from "@/lib/export";
 import { usePermissions } from "@/lib/use-permissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +27,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { TablePagination } from "@/components/table-pagination";
 
 export function CodeCatalog({
   kind,
@@ -39,6 +56,42 @@ export function CodeCatalog({
   const [code, setCode] = useState("");
   const [description, setDescription] = useState("");
   const [group, setGroup] = useState("");
+
+  // Search + client-side pagination (mirrors the reports table).
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return codes ?? [];
+    return (codes ?? []).filter((c) =>
+      [c.code, c.description, c.group ?? ""].some((f) =>
+        f.toLowerCase().includes(q),
+      ),
+    );
+  }, [codes, search]);
+
+  // Keep the current page in range as the filter/data changes.
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
+
+  const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
+
+  const runExport = (
+    fn: (
+      codes: CodeItem[],
+      label: string,
+      withGroup: boolean,
+    ) => Promise<void>,
+    kind: string,
+  ) => {
+    fn(filtered, label, withGroup)
+      .then(() => toast.success(`Exported ${filtered.length} code(s) to ${kind}`))
+      .catch((e: Error) => toast.error(e.message));
+  };
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["codes", kind] });
@@ -93,7 +146,7 @@ export function CodeCatalog({
             <Label>Code</Label>
             <Input
               value={code}
-              placeholder="e.g. SPN"
+              placeholder="e.g. PAA"
               onChange={(e) => setCode(e.target.value.toUpperCase())}
             />
           </div>
@@ -101,7 +154,7 @@ export function CodeCatalog({
             <Label>Description</Label>
             <Input
               value={description}
-              placeholder="e.g. Side panel"
+              placeholder="e.g. Panel"
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
@@ -126,6 +179,41 @@ export function CodeCatalog({
       </Card>
       )}
 
+      {/* Toolbar: search + export */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[220px] flex-1">
+          <Search className="absolute start-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            className="ps-8"
+            placeholder={`Search ${label.toLowerCase()}…`}
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+          />
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" disabled={filtered.length === 0}>
+              <Download /> Export
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>
+              Export {filtered.length} code(s)
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => runExport(exportCodesToExcel, "Excel")}>
+              <FileSpreadsheet /> Excel
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => runExport(exportCodesToPdf, "PDF")}>
+              <FileText /> PDF
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -145,14 +233,14 @@ export function CodeCatalog({
                   </TableCell>
                 </TableRow>
               )}
-              {codes?.length === 0 && !isLoading && (
+              {filtered.length === 0 && !isLoading && (
                 <TableRow>
                   <TableCell colSpan={withGroup ? 4 : 3} className="py-8 text-center text-muted-foreground">
-                    No codes yet.
+                    {search ? "No codes match your search." : "No codes yet."}
                   </TableCell>
                 </TableRow>
               )}
-              {codes?.map((c) => (
+              {paged.map((c) => (
                 <CodeRow
                   key={c.id}
                   item={c}
@@ -167,6 +255,18 @@ export function CodeCatalog({
           </Table>
         </CardContent>
       </Card>
+
+      <TablePagination
+        page={page}
+        pageSize={pageSize}
+        total={filtered.length}
+        label="code"
+        onPageChange={setPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPage(1);
+        }}
+      />
     </div>
   );
 }

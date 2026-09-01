@@ -14,6 +14,8 @@ const num = (v: unknown): number => (v == null ? 0 : Number(v));
 export interface EstimateContext {
   containerSize: ContainerSize;
   shippingLineId?: string | null;
+  /** Agency of the selected shipping line, for agency-level rate matching. */
+  agencyId?: string | null;
   repairRates: RepairRate[];
   /** Report labour rate, used when a matched rate has none of its own. */
   laborRate?: number;
@@ -49,6 +51,7 @@ export function estimateEor(
       grade: item.grade ?? null,
       containerSize: ctx.containerSize,
       shippingLineId: ctx.shippingLineId ?? null,
+      agencyId: ctx.agencyId ?? null,
     });
     if (rate?.currency) currency = rate.currency;
 
@@ -89,7 +92,7 @@ export function estimateEor(
     lines.push({
       no: idx + 1,
       componentCode: item.componentCode ?? "",
-      locationCode: item.iiclLocationCode ?? "",
+      locationCode: formatLoc(item),
       damageCode: item.iiclDamageCode ?? "",
       repairCode: item.repairCode ?? "",
       description: item.note?.trim() || rate?.description?.trim() || "",
@@ -123,6 +126,17 @@ export function estimateEor(
   };
 }
 
+/**
+ * The EOR "Loc Code" cell: the IICL location face plus the numbered panel/board
+ * when set, e.g. "LXXX-3" (left side, panel 3) or "IXXX-5" (floor board 5).
+ * Mirrors EorService.formatLoc.
+ */
+function formatLoc(item: DamageItem): string {
+  const loc = item.iiclLocationCode ?? "";
+  if (item.panelPosition == null) return loc;
+  return loc ? `${loc}-${item.panelPosition}` : `#${item.panelPosition}`;
+}
+
 /** Damaged-area ÷ full-component-area (capped at 1); 1 when not prorated. */
 function computeAreaFactor(item: DamageItem, rate?: RepairRate): number {
   const fullArea = num(rate?.fullLengthMm) * num(rate?.fullWidthMm);
@@ -140,6 +154,7 @@ function bestRate(
     grade: string | null;
     containerSize: ContainerSize;
     shippingLineId: string | null;
+    agencyId: string | null;
   },
 ): RepairRate | undefined {
   if (!key.componentCode || !key.repairCode) return undefined;
@@ -153,8 +168,11 @@ function bestRate(
     if (r.containerSize != null && r.containerSize !== key.containerSize) continue;
     if (r.shippingLineId != null && r.shippingLineId !== key.shippingLineId)
       continue;
+    if (r.agencyId != null && r.agencyId !== key.agencyId) continue;
+    // Precedence: line (16) beats agency (8) beats all; then size/damage/grade.
     const score =
-      (r.shippingLineId != null ? 8 : 0) +
+      (r.shippingLineId != null ? 16 : 0) +
+      (r.agencyId != null ? 8 : 0) +
       (r.containerSize != null ? 4 : 0) +
       (r.damageCode != null ? 2 : 0) +
       (r.grade != null ? 1 : 0);

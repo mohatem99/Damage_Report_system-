@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { useRouter } from "@/i18n/navigation";
 import {
   type ColumnDef,
   type ColumnFiltersState,
@@ -60,14 +61,49 @@ import {
 
 const ALL = "__all__";
 
-const TYPE_LABELS: Record<string, string> = {
-  STANDARD: "Standard",
-  HIGH_CUBE: "High Cube",
-  REEFER: "Reefer",
-  OPEN_TOP: "Open Top",
-  TANK: "Tank",
-  FLAT_RACK: "Flat Rack",
+/** Container type codes, in display order; labels come from translations. */
+const CONTAINER_TYPES = [
+  "STANDARD",
+  "HIGH_CUBE",
+  "REEFER",
+  "OPEN_TOP",
+  "TANK",
+  "FLAT_RACK",
+] as const;
+
+/** Column id → translation key under reports.table.col. */
+const COL_KEY: Record<string, string> = {
+  reportNo: "no",
+  reportDate: "date",
+  containerNumber: "container",
+  truckCompany: "truckCompany",
+  truckNumber: "truckNumber",
+  size: "size",
+  containerStatus: "status",
+  containerType: "type",
+  damages: "damages",
+  photos: "photos",
 };
+
+/**
+ * Page numbers to show for pagination: always the first and last page, the
+ * current page and its neighbours, with "…" gaps between. e.g. for page 6 of
+ * 12 → [1, "…", 5, 6, 7, "…", 12].
+ */
+function pageItems(current: number, total: number): (number | "dots")[] {
+  const items: (number | "dots")[] = [];
+  const keep = (i: number) =>
+    i === 1 || i === total || (i >= current - 1 && i <= current + 1);
+  let last = 0;
+  for (let i = 1; i <= total; i++) {
+    if (!keep(i)) continue;
+    if (last && i - last === 2) items.push(last + 1);
+    else if (last && i - last > 2) items.push("dots");
+    items.push(i);
+    last = i;
+  }
+  return items;
+}
 
 /** Sortable column header button. */
 function SortHeader({
@@ -98,21 +134,10 @@ function SortHeader({
   );
 }
 
-const COLUMN_LABELS: Record<string, string> = {
-  reportNo: "No.",
-  reportDate: "Date",
-  containerNumber: "Container",
-  truckCompany: "Truck Company",
-  truckNumber: "Truck No.",
-  size: "Size",
-  containerStatus: "Status",
-  containerType: "Type",
-  damages: "Damages",
-  photos: "Photos",
-};
-
 export function ReportsTable({ data }: { data: DamageReport[] }) {
   const router = useRouter();
+  const t = useTranslations("reports.table");
+  const tType = useTranslations("reports.containerType");
   const [sorting, setSorting] = React.useState<SortingState>([
     { id: "reportNo", desc: true },
   ]);
@@ -138,7 +163,7 @@ export function ReportsTable({ data }: { data: DamageReport[] }) {
                   : false
             }
             onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
-            aria-label="Select all"
+            aria-label={t("selectAll")}
           />
         ),
         cell: ({ row }) => (
@@ -146,47 +171,49 @@ export function ReportsTable({ data }: { data: DamageReport[] }) {
             <Checkbox
               checked={row.getIsSelected()}
               onCheckedChange={(v) => row.toggleSelected(!!v)}
-              aria-label="Select row"
+              aria-label={t("selectRow")}
             />
           </div>
         ),
       },
       {
         accessorKey: "reportNo",
-        header: ({ column }) => <SortHeader label="No." column={column} />,
+        header: ({ column }) => <SortHeader label={t("col.no")} column={column} />,
         cell: ({ row }) => (
-          <span className="font-mono font-medium">{row.original.reportNo}</span>
+          <span className="font-mono font-medium">
+            {row.original.reportNoFormatted ?? row.original.reportNo}
+          </span>
         ),
       },
       {
         accessorKey: "reportDate",
-        header: ({ column }) => <SortHeader label="Date" column={column} />,
+        header: ({ column }) => <SortHeader label={t("col.date")} column={column} />,
       },
       {
         accessorKey: "containerNumber",
-        header: ({ column }) => <SortHeader label="Container" column={column} />,
+        header: ({ column }) => <SortHeader label={t("col.container")} column={column} />,
         cell: ({ getValue }) => (
           <span className="font-medium">{getValue<string>()}</span>
         ),
       },
       {
         accessorKey: "truckCompany",
-        header: ({ column }) => <SortHeader label="Truck Company" column={column} />,
+        header: ({ column }) => <SortHeader label={t("col.truckCompany")} column={column} />,
         cell: ({ getValue }) => getValue<string>() || "—",
       },
       {
         accessorKey: "truckNumber",
-        header: ({ column }) => <SortHeader label="Truck No." column={column} />,
+        header: ({ column }) => <SortHeader label={t("col.truckNumber")} column={column} />,
         cell: ({ getValue }) => getValue<string>() || "—",
       },
       {
         id: "size",
         accessorFn: (r) => `${r.containerSize}'`,
-        header: ({ column }) => <SortHeader label="Size" column={column} />,
+        header: ({ column }) => <SortHeader label={t("col.size")} column={column} />,
       },
       {
         accessorKey: "containerStatus",
-        header: ({ column }) => <SortHeader label="Status" column={column} />,
+        header: ({ column }) => <SortHeader label={t("col.status")} column={column} />,
         filterFn: "equalsString",
         cell: ({ getValue }) => (
           <Badge variant="outline">{getValue<string>()}</Badge>
@@ -194,16 +221,16 @@ export function ReportsTable({ data }: { data: DamageReport[] }) {
       },
       {
         accessorKey: "containerType",
-        header: ({ column }) => <SortHeader label="Type" column={column} />,
+        header: ({ column }) => <SortHeader label={t("col.type")} column={column} />,
         filterFn: "equalsString",
-        cell: ({ getValue }) => TYPE_LABELS[getValue<string>()] ?? getValue<string>(),
+        cell: ({ getValue }) => tType(getValue<string>()),
       },
       {
         id: "damages",
         accessorFn: (r) => r.itemCount ?? r.items?.length ?? 0,
         enableGlobalFilter: false,
         header: ({ column }) => (
-          <SortHeader label="Damages" column={column} className="justify-center" />
+          <SortHeader label={t("col.damages")} column={column} className="justify-center" />
         ),
         cell: ({ getValue }) => (
           <div className="text-center">
@@ -216,7 +243,7 @@ export function ReportsTable({ data }: { data: DamageReport[] }) {
         accessorFn: (r) => r.attachmentCount ?? r.attachments?.length ?? 0,
         enableGlobalFilter: false,
         header: ({ column }) => (
-          <SortHeader label="Photos" column={column} className="justify-center" />
+          <SortHeader label={t("col.photos")} column={column} className="justify-center" />
         ),
         cell: ({ getValue }) => (
           <div className="text-center">
@@ -225,7 +252,7 @@ export function ReportsTable({ data }: { data: DamageReport[] }) {
         ),
       },
     ],
-    [],
+    [t, tType],
   );
 
   const table = useReactTable({
@@ -256,8 +283,8 @@ export function ReportsTable({ data }: { data: DamageReport[] }) {
 
   const runExport = (fn: (rows: DamageReport[]) => Promise<void>, kind: string) => {
     fn(exportRows)
-      .then(() => toast.success(`Exported ${exportRows.length} report(s) to ${kind}`))
-      .catch((e: Error) => toast.error(`Export failed: ${e.message}`));
+      .then(() => toast.success(t("exportSuccess", { count: exportRows.length, kind })))
+      .catch((e: Error) => toast.error(t("exportFailed", { message: e.message })));
   };
 
   const statusValue =
@@ -270,10 +297,10 @@ export function ReportsTable({ data }: { data: DamageReport[] }) {
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[220px] flex-1">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute start-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            className="pl-8"
-            placeholder="Search reports…"
+            className="ps-8"
+            placeholder={t("searchPlaceholder")}
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
           />
@@ -286,12 +313,12 @@ export function ReportsTable({ data }: { data: DamageReport[] }) {
           }
         >
           <SelectTrigger className="w-[130px]">
-            <SelectValue placeholder="Status" />
+            <SelectValue placeholder={t("status")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL}>All statuses</SelectItem>
-            <SelectItem value="EMPTY">Empty</SelectItem>
-            <SelectItem value="LADEN">Laden</SelectItem>
+            <SelectItem value={ALL}>{t("allStatuses")}</SelectItem>
+            <SelectItem value="EMPTY">{t("empty")}</SelectItem>
+            <SelectItem value="LADEN">{t("laden")}</SelectItem>
           </SelectContent>
         </Select>
 
@@ -302,28 +329,28 @@ export function ReportsTable({ data }: { data: DamageReport[] }) {
           }
         >
           <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder="Type" />
+            <SelectValue placeholder={t("type")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL}>All types</SelectItem>
-            {Object.entries(TYPE_LABELS).map(([v, label]) => (
+            <SelectItem value={ALL}>{t("allTypes")}</SelectItem>
+            {CONTAINER_TYPES.map((v) => (
               <SelectItem key={v} value={v}>
-                {label}
+                {tType(v)}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ms-auto flex items-center gap-2">
           {/* Column visibility */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
-                <SlidersHorizontal /> Columns
+                <SlidersHorizontal /> {t("columns")}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+              <DropdownMenuLabel>{t("toggleColumns")}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               {table
                 .getAllColumns()
@@ -335,7 +362,7 @@ export function ReportsTable({ data }: { data: DamageReport[] }) {
                     onCheckedChange={(v) => c.toggleVisibility(!!v)}
                     onSelect={(e) => e.preventDefault()}
                   >
-                    {COLUMN_LABELS[c.id] ?? c.id}
+                    {COL_KEY[c.id] ? t(`col.${COL_KEY[c.id]}`) : c.id}
                   </DropdownMenuCheckboxItem>
                 ))}
             </DropdownMenuContent>
@@ -345,19 +372,21 @@ export function ReportsTable({ data }: { data: DamageReport[] }) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" disabled={exportRows.length === 0}>
-                <Download /> Export
+                <Download /> {t("export")}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>
-                Export {selectedRows.length ? `${selectedRows.length} selected` : `${exportRows.length} rows`}
+                {selectedRows.length
+                  ? t("exportSelected", { count: selectedRows.length })
+                  : t("exportRows", { count: exportRows.length })}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => runExport(exportReportsToExcel, "Excel")}>
-                <FileSpreadsheet /> Excel (.xlsx)
+                <FileSpreadsheet /> {t("excel")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => runExport(exportReportsToPdf, "PDF")}>
-                <FileText /> PDF
+                <FileText /> {t("pdf")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -405,7 +434,7 @@ export function ReportsTable({ data }: { data: DamageReport[] }) {
                   colSpan={table.getAllColumns().length}
                   className="h-24 text-center text-muted-foreground"
                 >
-                  No reports found.
+                  {t("noReports")}
                 </TableCell>
               </TableRow>
             )}
@@ -417,12 +446,15 @@ export function ReportsTable({ data }: { data: DamageReport[] }) {
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
         <div className="text-muted-foreground">
           {selectedRows.length > 0
-            ? `${selectedRows.length} of ${filteredRows.length} row(s) selected`
-            : `${filteredRows.length} report(s)`}
+            ? t("rowsSelected", {
+                selected: selectedRows.length,
+                total: filteredRows.length,
+              })
+            : t("rowsCount", { count: filteredRows.length })}
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className="text-muted-foreground">Rows per page</span>
+            <span className="text-muted-foreground">{t("rowsPerPage")}</span>
             <Select
               value={String(table.getState().pagination.pageSize)}
               onValueChange={(v) => table.setPageSize(Number(v))}
@@ -439,26 +471,51 @@ export function ReportsTable({ data }: { data: DamageReport[] }) {
               </SelectContent>
             </Select>
           </div>
-          <span className="text-muted-foreground">
-            Page {table.getState().pagination.pageIndex + 1} of{" "}
-            {table.getPageCount() || 1}
-          </span>
-          <div className="flex gap-1">
+          <div className="flex items-center gap-1">
             <Button
               variant="outline"
               size="sm"
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
             >
-              Previous
+              {t("previous")}
             </Button>
+            {pageItems(
+              table.getState().pagination.pageIndex + 1,
+              table.getPageCount() || 1,
+            ).map((p, i) =>
+              p === "dots" ? (
+                <span key={`dots-${i}`} className="px-1.5 text-muted-foreground">
+                  …
+                </span>
+              ) : (
+                <Button
+                  key={p}
+                  variant={
+                    p === table.getState().pagination.pageIndex + 1
+                      ? "default"
+                      : "outline"
+                  }
+                  size="sm"
+                  className="min-w-9 tabular-nums"
+                  aria-current={
+                    p === table.getState().pagination.pageIndex + 1
+                      ? "page"
+                      : undefined
+                  }
+                  onClick={() => table.setPageIndex(p - 1)}
+                >
+                  {p}
+                </Button>
+              ),
+            )}
             <Button
               variant="outline"
               size="sm"
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
             >
-              Next
+              {t("next")}
             </Button>
           </div>
         </div>
